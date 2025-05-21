@@ -14,10 +14,11 @@ flowchart LR
 2. **CreateTodayFolder** – Create today's folder using the pattern `YYYY-MM-DD-<day>`.
 3. **CreateJournalFile** – Place the journal template inside the new folder.
 
-The automation can be triggered daily via cron:
+The automation can be triggered daily via cron. Run the script using the module
+syntax so Python treats `journal_automation` as a package:
 
 ```
-0 1 * * * python /path/to/journal_automation/main.py
+0 1 * * * python -m journal_automation.main
 ```
 
 Running the script manually is also safe; it will not overwrite existing folders or files.
