@@ -7,6 +7,7 @@
 
 - Insert comments liberally.
 - Comments should be geared towards teaching the concepts of Python and PocketFlow
+- Assume the human reading the comments is familiar with TypeScript but is brand new to Python and PocketFlow
 
 ## Journal Folder Structure Schema
 
