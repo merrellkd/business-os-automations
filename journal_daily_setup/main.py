@@ -6,7 +6,8 @@ def main(journal_root: str = '00_daily-journal'):
     shared = {
         'journal_root': journal_root,
         'today_folder': '',
-        'today_path': ''
+        'today_path': '',
+        'repo_root': str(Path().resolve())
     }
     flow = create_journal_flow()
     flow.run(shared)
