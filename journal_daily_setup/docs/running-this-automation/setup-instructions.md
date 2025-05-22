@@ -39,13 +39,13 @@ Follow these steps to set up your journal automation to run both manually and au
 1. Save the plist file to your LaunchAgents directory:
 
    ```bash
-   cp com.kdm.journal-automation.plist ~/Library/LaunchAgents/
+   cp com.kdm.journal_daily_setup.plist ~/Library/LaunchAgents/
    ```
 
 2. Load the launchd job:
 
    ```bash
-   launchctl load ~/Library/LaunchAgents/com.kdm.journal-automation.plist
+   launchctl load ~/Library/LaunchAgents/com.kdm.journal_daily_setup.plist
    ```
 
 3. Verify that it's loaded:
@@ -99,8 +99,8 @@ cd /Users/kdm/projects/digital-ext/business-os-automations/journal_automation
 If the automation doesn't run as expected, check the log files:
 
 ```bash
-cat ~/Library/Logs/journal-automation.log
-cat ~/Library/Logs/journal-automation.err
+cat ~/Library/Logs/journal_daily_setup.log
+cat ~/Library/Logs/journal_daily_setup.err
 ```
 
 ### Reloading after changes
@@ -108,8 +108,8 @@ cat ~/Library/Logs/journal-automation.err
 If you modify the plist file, reload it:
 
 ```bash
-launchctl unload ~/Library/LaunchAgents/com.kdm.journal-automation.plist
-launchctl load ~/Library/LaunchAgents/com.kdm.journal-automation.plist
+launchctl unload ~/Library/LaunchAgents/com.kdm.journal-daily-setup.plist
+launchctl load ~/Library/LaunchAgents/com.kdm.journal-daily-setup.plist
 ```
 
 ### Testing the launchd job
@@ -117,7 +117,7 @@ launchctl load ~/Library/LaunchAgents/com.kdm.journal-automation.plist
 To test if the launchd job works without waiting for the scheduled time:
 
 ```bash
-launchctl start com.kdm.journal-automation
+launchctl start com.kdm.journal-daily-setup
 ```
 
 ### Uninstalling
@@ -125,6 +125,6 @@ launchctl start com.kdm.journal-automation
 To remove the automatic scheduling:
 
 ```bash
-launchctl unload ~/Library/LaunchAgents/com.kdm.journal-automation.plist
-rm ~/Library/LaunchAgents/com.kdm.journal-automation.plist
+launchctl unload ~/Library/LaunchAgents/com.kdm.journal-daily-setup.plist
+rm ~/Library/LaunchAgents/com.kdm.journal_daily_setup.plist
 ```
