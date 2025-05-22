@@ -39,5 +39,15 @@ class TestJournalFlow(unittest.TestCase):
         self.assertFalse(old_folder.exists())
         self.assertTrue((archive_path / f"{yesterday}.journal.md").exists())
 
+    def test_flow_creates_today_without_archives(self):
+        shared = {'journal_root': str(self.root), 'today_folder': '', 'today_path': ''}
+        flow = create_journal_flow()
+        flow.run(shared)
+
+        today_folder = datetime.now().strftime('%Y-%m-%d-%a').lower()
+        today_path = self.root / today_folder
+        self.assertTrue(today_path.is_dir())
+        self.assertTrue((today_path / f"{today_folder}.journal.md").exists())
+
 if __name__ == '__main__':
     unittest.main()
