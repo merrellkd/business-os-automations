@@ -9,4 +9,4 @@ cd "$AUTOMATION_DIR"
 
 # Run the journal automation module
 # Using the full path avoids issues with launchd not finding the Python interpreter
-/opt/homebrew/bin/python3 -m journal_daily_setup.main --root "$JOURNAL_ROOT"
+/opt/homebrew/bin/python3 -m journal_daily_setup.main --root "$JOURNAL_ROOT" --log-level DEBUG

@@ -2,6 +2,7 @@ from pathlib import Path
 from datetime import datetime
 import subprocess
 import logging
+import time
 from pocketflow import Node
 from journal_daily_setup.utils.fs_utils import ensure_dir, move_folder, create_file
 
@@ -146,6 +147,9 @@ class CreatePullRequest(Node):
         branch, repo_root = data
         try:
             subprocess.run(['git', 'push', '-u', 'origin', branch], check=True, cwd=repo_root)
+            
+            # Small delay to let GitHub process the branch
+            time.sleep(2)
             pr = subprocess.run(['gh', 'pr', 'create', '--fill'], capture_output=True, text=True, cwd=repo_root)
             url = pr.stdout.strip()
             logging.info(f"Created pull request {url}")

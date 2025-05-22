@@ -3,6 +3,11 @@
 - I am using pocketflow for its simplicity and elegance in specifying workflows.
 - I am trying to increase my understanding and proficiency with pocketflow as a way to build skills and expand effectiveness of agentic coding practices.
 
+## Coding Instructions
+
+- Insert comments liberally.
+- Comments should be geared towards teaching the concepts of Python and PocketFlow
+
 ## Journal Folder Structure Schema
 
 Daily journaling system with a well-defined hierarchical organization:
