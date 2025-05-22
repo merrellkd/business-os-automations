@@ -1,4 +1,4 @@
-import asyncio, warnings, copy, time
+import asyncio, warnings, copy, time, logging
 
 class BaseNode:
     def __init__(self): self.params,self.successors={},{}
@@ -11,9 +11,12 @@ class BaseNode:
     def post(self,shared,prep_res,exec_res): pass
     def _exec(self,prep_res): return self.exec(prep_res)
     def _run(self,shared): p=self.prep(shared); e=self._exec(p); return self.post(shared,p,e)
-    def run(self,shared): 
-        if self.successors: warnings.warn("Node won't run successors. Use Flow.")  
-        return self._run(shared)
+    def run(self,shared):
+        if self.successors: warnings.warn("Node won't run successors. Use Flow.")
+        logging.debug(f"Running node {self.__class__.__name__}")
+        result = self._run(shared)
+        logging.debug(f"Node {self.__class__.__name__} returned {result}")
+        return result
     def __rshift__(self,other): return self.next(other)
     def __sub__(self,action):
         if isinstance(action,str): return _ConditionalTransition(self,action)
@@ -44,10 +47,20 @@ class Flow(BaseNode):
         if not nxt and curr.successors: warnings.warn(f"Flow ends: '{action}' not found in {list(curr.successors)}")
         return nxt
     def _orch(self,shared,params=None):
-        curr,p,last_action =copy.copy(self.start_node),(params or {**self.params}),None
-        while curr: curr.set_params(p); last_action=curr._run(shared); curr=copy.copy(self.get_next_node(curr,last_action))
+        curr,p,last_action = copy.copy(self.start_node), (params or {**self.params}), None
+        while curr:
+            logging.debug(f"Flow executing node {curr.__class__.__name__}")
+            curr.set_params(p)
+            last_action = curr._run(shared)
+            logging.debug(f"Node action result: {last_action}")
+            curr = copy.copy(self.get_next_node(curr, last_action))
         return last_action
-    def _run(self,shared): p=self.prep(shared); o=self._orch(shared); return self.post(shared,p,o)
+    def _run(self,shared):
+        p = self.prep(shared)
+        logging.debug("Flow prep complete")
+        o = self._orch(shared)
+        logging.debug("Flow orchestration complete")
+        return self.post(shared, p, o)
     def post(self,shared,prep_res,exec_res): return exec_res
 
 class BatchFlow(Flow):
@@ -81,10 +94,20 @@ class AsyncParallelBatchNode(AsyncNode,BatchNode):
 
 class AsyncFlow(Flow,AsyncNode):
     async def _orch_async(self,shared,params=None):
-        curr,p,last_action =copy.copy(self.start_node),(params or {**self.params}),None
-        while curr: curr.set_params(p); last_action=await curr._run_async(shared) if isinstance(curr,AsyncNode) else curr._run(shared); curr=copy.copy(self.get_next_node(curr,last_action))
+        curr, p, last_action = copy.copy(self.start_node), (params or {**self.params}), None
+        while curr:
+            logging.debug(f"AsyncFlow executing node {curr.__class__.__name__}")
+            curr.set_params(p)
+            last_action = await curr._run_async(shared) if isinstance(curr, AsyncNode) else curr._run(shared)
+            logging.debug(f"Node action result: {last_action}")
+            curr = copy.copy(self.get_next_node(curr, last_action))
         return last_action
-    async def _run_async(self,shared): p=await self.prep_async(shared); o=await self._orch_async(shared); return await self.post_async(shared,p,o)
+    async def _run_async(self,shared):
+        p = await self.prep_async(shared)
+        logging.debug("AsyncFlow prep complete")
+        o = await self._orch_async(shared)
+        logging.debug("AsyncFlow orchestration complete")
+        return await self.post_async(shared, p, o)
     async def post_async(self,shared,prep_res,exec_res): return exec_res
 
 class AsyncBatchFlow(AsyncFlow,BatchFlow):
