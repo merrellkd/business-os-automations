@@ -8,11 +8,13 @@ def main(journal_root: str = '00_daily-journal', log_level: str = 'INFO'):
         level=getattr(logging, log_level.upper(), logging.INFO),
         format='%(asctime)s - %(levelname)s - %(message)s'
     )
+    repo_root = Path(journal_root).parent
     shared = {
         'journal_root': journal_root,
         'today_folder': '',
         'today_path': '',
-        'enable_git': True
+        'enable_git': True,
+        'repo_root': repo_root,
     }
     flow = create_journal_flow()
     flow.run(shared)
