@@ -96,22 +96,29 @@ class CommitChanges(Node):
         paths = shared.get('archived_paths', [])
         enable = shared.get('enable_git', False)
         repo_root = shared.get('repo_root', '.')
+        branch = None
+        if enable and paths:
+            date_str = datetime.now().strftime('%Y-%m-%d')
+            branch = f'journal-{date_str}'
+            shared['branch_name'] = branch
         logging.debug(f"Paths to commit: {paths} in repo {repo_root}")
-        return paths, enable, repo_root
+        return paths, enable, repo_root, branch
 
     def exec(self, data):
-        paths, enable, repo_root = data
+        paths, enable, repo_root, branch = data
         if not enable or not paths:
             logging.info("No changes to commit or git disabled")
             return None
         try:
+            subprocess.run(['git', 'checkout', '-b', branch], check=True, cwd=repo_root)
             subprocess.run(['git', 'add', '--'] + paths, check=True, cwd=repo_root)
             subprocess.run(['git', 'commit', '-m', 'Archive previous journal'], check=True, cwd=repo_root)
             sha = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True, cwd=repo_root).strip()
-            logging.info(f"Committed changes with SHA {sha}")
+            logging.info(f"Committed changes with SHA {sha} on branch {branch}")
             return sha
         except Exception:
             logging.exception("Git commit failed")
+            subprocess.run(['git', 'checkout', '-'], check=False, cwd=repo_root)
             return None
 
     def post(self, shared, prep_res, exec_res):
@@ -126,16 +133,10 @@ class CreatePullRequest(Node):
     """Open a pull request for the archived changes."""
 
     def prep(self, shared):
-        logging.debug("Preparing to create pull request", shared)
-        if not shared.get('enable_git'):
+        if not shared.get('enable_git') or not shared.get('commit_sha'):
             return None
-        sha = shared.get('commit_sha')
-        if not sha:
-            return None
-        date_str = datetime.now().strftime('%Y-%m-%d')
-        branch = f'journal-{date_str}'
+        branch = shared.get('branch_name')
         repo_root = shared.get('repo_root', '.')
-        logging.debug(f"Creating PR from commit {sha} on branch {branch} in repo {repo_root}")
         return branch, repo_root
 
     def exec(self, data):
@@ -144,7 +145,6 @@ class CreatePullRequest(Node):
             return None
         branch, repo_root = data
         try:
-            subprocess.run(['git', 'checkout', '-b', branch], check=True, cwd=repo_root)
             subprocess.run(['git', 'push', '-u', 'origin', branch], check=True, cwd=repo_root)
             pr = subprocess.run(['gh', 'pr', 'create', '--fill'], capture_output=True, text=True, cwd=repo_root)
             url = pr.stdout.strip()
