@@ -17,7 +17,7 @@ flowchart LR
 2. **CommitChanges** – Commit archived folders to the Git repository if changes exist. If nothing was archived, the flow proceeds directly to creating today's folder.
 3. **CreatePullRequest** – Only runs when a commit was made. It opens a pull request for the archived changes.
 4. **CreateTodayFolder** – Create today's folder using the pattern `YYYY-MM-DD-<day>`.
-5. **CreateJournalFile** – Place the journal template inside the new folder. If a pull request was opened, include a task linking to it.
+5. **CreateJournalFile** – Place the journal template inside the new folder. If a pull request was opened, include a task linking to it. If the PR fails to open, add a task reminding to create a PR from the new branch.
 
 The automation should be triggered daily via the macOS launchd facilty.
 

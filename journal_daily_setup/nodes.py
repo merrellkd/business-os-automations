@@ -77,14 +77,17 @@ class CreateJournalFile(Node):
         folder_path = Path(shared['today_path'])
         file_path = folder_path / f"{date_str}.journal.md"
         pr_url = shared.get('pr_url')
+        branch = shared.get('branch_name')
         logging.debug(f"Preparing journal file {file_path}")
-        return file_path, date_str, pr_url
+        return file_path, date_str, pr_url, branch
 
     def exec(self, data):
-        file_path, date_str, pr_url = data
+        file_path, date_str, pr_url, branch = data
         content = JOURNAL_TEMPLATE.format(date=date_str)
         if pr_url:
             content += f"\n\n## Tasks\n- [ ] Review yesterday's PR: {pr_url}\n"
+        elif branch:
+            content += f"\n\n## Tasks\n- [ ] Create PR for branch: {branch}\n"
         create_file(file_path, content)
         logging.info(f"Created journal file at {file_path}")
         return file_path
@@ -150,8 +153,14 @@ class CreatePullRequest(Node):
             
             # Small delay to let GitHub process the branch
             time.sleep(2)
-            pr = subprocess.run(['gh', 'pr', 'create', '--fill'], capture_output=True, text=True, cwd=repo_root)
-            url = pr.stdout.strip()
+            pr = subprocess.run(
+                ['gh', 'pr', 'create', '--fill'],
+                capture_output=True,
+                text=True,
+                cwd=repo_root,
+            )
+            output = pr.stdout.strip().splitlines()
+            url = output[-1] if output else ''
             logging.info(f"Created pull request {url}")
             return url
         except Exception:
