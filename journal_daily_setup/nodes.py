@@ -126,6 +126,7 @@ class CreatePullRequest(Node):
     """Open a pull request for the archived changes."""
 
     def prep(self, shared):
+        logging.debug("Preparing to create pull request", shared)
         if not shared.get('enable_git'):
             return None
         sha = shared.get('commit_sha')

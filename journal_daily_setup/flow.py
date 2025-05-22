@@ -19,7 +19,9 @@ def create_journal_flow():
     commit >> create_folder                 # default path covers 'no_changes'
     commit - "no_changes" >> create_folder
     commit - "committed" >> pr
-    pr >> create_folder
+    pr >> create_folder                       # default path
+    pr - "created" >> create_folder          # ensure continuation when PR created
+    pr - "skipped" >> create_folder          # ensure continuation when PR fails
     create_folder >> create_file
 
     return Flow(start=archive)
