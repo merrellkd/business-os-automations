@@ -3,7 +3,7 @@ from pathlib import Path
 import shutil
 import unittest
 
-from journal_automation.utils.fs_utils import ensure_dir, move_folder, create_file
+from journal_daily_setup.utils.fs_utils import ensure_dir, move_folder, create_file
 
 class TestFSUtils(unittest.TestCase):
     def setUp(self):

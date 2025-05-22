@@ -1,5 +1,5 @@
 from pathlib import Path
-from journal_automation.flow import create_journal_flow
+from journal_daily_setup.flow import create_journal_flow
 
 
 def main(journal_root: str = '00_daily-journal'):

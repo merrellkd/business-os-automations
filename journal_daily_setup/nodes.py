@@ -1,7 +1,7 @@
 from pathlib import Path
 from datetime import datetime
 from pocketflow import Node
-from journal_automation.utils.fs_utils import ensure_dir, move_folder, create_file
+from journal_daily_setup.utils.fs_utils import ensure_dir, move_folder, create_file
 
 JOURNAL_TEMPLATE = """# {date}.journal.md
 

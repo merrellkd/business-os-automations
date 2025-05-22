@@ -3,8 +3,8 @@ from pathlib import Path
 from datetime import datetime, timedelta
 import unittest
 
-from journal_automation.flow import create_journal_flow
-from journal_automation.utils.fs_utils import ensure_dir
+from journal_daily_setup.flow import create_journal_flow
+from journal_daily_setup.utils.fs_utils import ensure_dir
 
 class TestJournalFlow(unittest.TestCase):
     def setUp(self):

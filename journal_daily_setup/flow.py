@@ -1,5 +1,5 @@
 from pocketflow import Flow
-from journal_automation.nodes import ArchiveOldFolders, CreateTodayFolder, CreateJournalFile
+from journal_daily_setup.nodes import ArchiveOldFolders, CreateTodayFolder, CreateJournalFile
 
 
 def create_journal_flow():
