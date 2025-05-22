@@ -6,7 +6,8 @@ def main(journal_root: str = '00_daily-journal'):
     shared = {
         'journal_root': journal_root,
         'today_folder': '',
-        'today_path': ''
+        'today_path': '',
+        'enable_git': True
     }
     flow = create_journal_flow()
     flow.run(shared)
