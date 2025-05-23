@@ -1,0 +1,5 @@
+# Default configuration for semantic search
+root_path: /path/to/business-os
+file_extensions: ['.md', '.txt', '.py']
+embedding_model: nomic-embed-text
+llm_provider: ollama
