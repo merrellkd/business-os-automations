@@ -51,3 +51,61 @@ def run_incremental_index(shared: Dict[str, Any]) -> None:
 
     run_full_index(shared)
 
+
+# ---------------------------------------------------------------------------
+# Query flow builders
+# ---------------------------------------------------------------------------
+
+
+def create_simple_search_flow() -> Flow:
+    """Return a flow performing semantic retrieval followed by LLM processing."""
+
+    search = nodes.SemanticSearchNode()
+    llm = nodes.LLMProcessorNode()
+    out = nodes.OutputFormatterNode()
+
+    search >> llm >> out
+    return Flow(search)
+
+
+def create_temporal_flow() -> Flow:
+    """Flow for queries with temporal components."""
+
+    temporal = nodes.TemporalMapperNode()
+    llm = nodes.LLMProcessorNode()
+    out = nodes.OutputFormatterNode()
+
+    temporal >> llm >> out
+    return Flow(temporal)
+
+
+def create_agent_flow() -> Flow:
+    """Flow that delegates reasoning to an orchestrated agent."""
+
+    agent = nodes.AgentOrchestratorNode()
+    llm = nodes.LLMProcessorNode()
+    out = nodes.OutputFormatterNode()
+
+    agent >> llm >> out
+    return Flow(agent)
+
+
+def create_query_flow() -> Flow:
+    """Top-level flow that routes the query to one of the specialised flows."""
+
+    router = nodes.QueryRouterNode()
+
+    simple = create_simple_search_flow()
+    temporal = create_temporal_flow()
+    agent = create_agent_flow()
+
+    router - "simple" >> simple
+    router - "temporal" >> temporal
+    router - "summary" >> temporal
+    router - "agent" >> agent
+
+    router >> simple  # default route
+
+    return Flow(router)
+
+
