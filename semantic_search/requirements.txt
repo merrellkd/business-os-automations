@@ -1,1 +1,5 @@
 pocketflow
+
+# Optional dependencies for full functionality
+faiss-cpu
+
