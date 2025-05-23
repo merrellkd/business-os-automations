@@ -2,8 +2,14 @@ import os
 from pathlib import Path
 import shutil
 import unittest
+import subprocess
 
-from journal_daily_setup.utils.fs_utils import ensure_dir, move_folder, create_file
+from journal_daily_setup.utils.fs_utils import (
+    ensure_dir,
+    move_folder,
+    create_file,
+    github_pr_link,
+)
 
 class TestFSUtils(unittest.TestCase):
     def setUp(self):
@@ -33,6 +39,26 @@ class TestFSUtils(unittest.TestCase):
         self.assertTrue(f.exists())
         with open(f) as fh:
             self.assertEqual(fh.read(), 'hello')
+
+    def test_github_pr_link(self):
+        """Verify we can construct a PR link from a Git remote."""
+        repo_root = self.tmp_root
+
+        # Initialize a minimal git repository with an origin remote so that
+        # ``git remote get-url origin`` succeeds.
+        subprocess.run(['git', 'init'], cwd=repo_root, check=True, stdout=subprocess.DEVNULL)
+        subprocess.run(
+            ['git', 'remote', 'add', 'origin', 'https://github.com/foo/bar.git'],
+            cwd=repo_root,
+            check=True,
+            stdout=subprocess.DEVNULL,
+        )
+
+        link = github_pr_link(repo_root, 'feature')
+        self.assertEqual(
+            link,
+            'https://github.com/foo/bar/pull/new/feature',
+        )
 
 if __name__ == '__main__':
     unittest.main()
