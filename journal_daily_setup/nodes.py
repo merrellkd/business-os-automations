@@ -4,7 +4,12 @@ import subprocess
 import logging
 import time
 from pocketflow import Node
-from journal_daily_setup.utils.fs_utils import ensure_dir, move_folder, create_file
+from journal_daily_setup.utils.fs_utils import (
+    ensure_dir,
+    move_folder,
+    create_file,
+    github_pr_link,
+)
 
 JOURNAL_TEMPLATE = """# {date}.journal.md
 
@@ -78,16 +83,33 @@ class CreateJournalFile(Node):
         file_path = folder_path / f"{date_str}.journal.md"
         pr_url = shared.get('pr_url')
         branch = shared.get('branch_name')
+        repo_root = shared.get('repo_root', '.')
+
+        # Attempt to build a direct link to the GitHub PR page if we have a
+        # branch but no PR URL yet.  This mirrors TypeScript's approach of
+        # gathering all necessary data up front in a "prep" step.
+        pr_create_link = None
+        if branch and not pr_url:
+            pr_create_link = github_pr_link(Path(repo_root), branch)
+
         logging.debug(f"Preparing journal file {file_path}")
-        return file_path, date_str, pr_url, branch
+        return file_path, date_str, pr_url, branch, pr_create_link
 
     def exec(self, data):
-        file_path, date_str, pr_url, branch = data
+        file_path, date_str, pr_url, branch, pr_create_link = data
         content = JOURNAL_TEMPLATE.format(date=date_str)
         if pr_url:
             content += f"\n\n## Tasks\n- [ ] Review yesterday's PR: {pr_url}\n"
         elif branch:
-            content += f"\n\n## Tasks\n- [ ] Create PR for branch: {branch}\n"
+            # When no PR URL exists we either link directly to GitHub's
+            # "new pull request" page or fall back to plain text.
+            if pr_create_link:
+                content += (
+                    f"\n\n## Tasks\n- [ ] "
+                    f"[Create PR for branch: {branch}]({pr_create_link})\n"
+                )
+            else:
+                content += f"\n\n## Tasks\n- [ ] Create PR for branch: {branch}\n"
         create_file(file_path, content)
         logging.info(f"Created journal file at {file_path}")
         return file_path
