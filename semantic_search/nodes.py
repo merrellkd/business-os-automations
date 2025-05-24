@@ -10,6 +10,9 @@ from __future__ import annotations
 from typing import Any, Dict, Iterable, List
 import logging
 from pathlib import Path
+from datetime import datetime
+
+from .utils import llm_utils
 
 from pocketflow import Node, Flow
 from semantic_search.utils import llm_utils
@@ -170,165 +173,149 @@ class UpdateMetadataDBNode(Node):
 
 # Add these nodes to your nodes.py file
 
+
+# ---------------------------------------------------------------------------
+# Query flow nodes (Track E)
+# ---------------------------------------------------------------------------
+
+    
+
 class QueryRouterNode(Node):
-    """Analyze incoming queries and route to appropriate processing flow."""
-    
+    """Classify the user's query and route to the appropriate sub-flow."""
+
     def prep(self, shared: Dict[str, Any]):
-        query = shared.get("query", {}).get("query", "")
-        return query
-    
-    def exec(self, query: str):
-        query_type = query_utils.classify_query(query)
-        logger.info(f"Classified query as: {query_type}")
-        return query_type
-    
-    def post(self, shared, prep_res, exec_res):
+        # The query text is stored under ``shared['query']['query']``.
+        return shared.get("query", {}).get("query", "")
+
+    def exec(self, query: str) -> str:
+        # ``classify_query`` returns labels such as ``'simple'`` or ``'temporal'``.
+        return query_utils.classify_query(query)
+
+    def post(self, shared: Dict[str, Any], prep_res, exec_res: str) -> str:
+        # Persist the query type so later nodes can use it and return the
+        # action name to drive PocketFlow's branching behaviour.
         shared.setdefault("query", {})["query_type"] = exec_res
-        return exec_res  # Route based on query type
+        return exec_res
 
 
 class SemanticSearchNode(Node):
-    """Perform vector similarity search against indexed documents."""
-    
+    """Retrieve similar chunks from the vector store."""
+
     def prep(self, shared: Dict[str, Any]):
-        query = shared.get("query", {}).get("query", "")
-        config = shared.get("config", {})
-        index_path = config.get("index_path", "semantic_index.pkl")
-        model = config.get("embedding_model", "nomic-embed-text")
-        k = config.get("search_k", 5)
-        return query, index_path, model, k
-    
+        q = shared.get("query", {}).get("query", "")
+        cfg = shared.get("config", {})
+        index_path = cfg.get("index_path", "semantic_index.pkl")
+        db_path = cfg.get("metadata_path", "metadata.db")
+        model = cfg.get("embedding_model", "nomic-embed-text")
+        return q, index_path, db_path, model
+
     def exec(self, prep_res):
-        query, index_path, model, k = prep_res
-        
-        # Generate query embedding
-        query_embedding = embedding_utils.generate_embeddings([query], model=model)[0]
-        
-        # Load and search index
-        if not Path(index_path).exists():
-            logger.warning(f"Index not found at {index_path}")
-            return []
-        
+        query, index_path, db_path, model = prep_res
+        # Generate an embedding for the query text.
+        vec = embedding_utils.generate_embeddings([query], model=model, use_fallback=True)[0]
         index = faiss_manager.load_index(index_path)
-        ids, scores = faiss_manager.search(index, query_embedding, k=k)
-        
-        return list(zip(ids, scores))
-    
-    def post(self, shared, prep_res, exec_res):
-        shared["query"]["search_results"] = exec_res
+        ids, scores = faiss_manager.search(index, vec, k=5)
+        # Retrieve the original text for each matching chunk from SQLite.
+        conn = metadata_db.init_db(db_path)
+        results: List[Dict[str, Any]] = []
+        for idx, score in zip(ids, scores):
+            text = metadata_db.get_chunk_by_id(conn, idx + 1)
+            results.append({"id": idx, "score": score, "text": text})
+        conn.close()
+        return results
+
+    def post(self, shared: Dict[str, Any], prep_res, exec_res):
+        shared.setdefault("query", {})["search_results"] = exec_res
         return "default"
 
 
 class TemporalMapperNode(Node):
-    """Handle time-based queries by filtering documents by date."""
-    
+    """Find files matching temporal constraints in the query."""
+
     def prep(self, shared: Dict[str, Any]):
         query = shared.get("query", {}).get("query", "")
-        config = shared.get("config", {})
-        db_path = config.get("metadata_path", "metadata.db")
+        db_path = shared.get("config", {}).get("metadata_path", "metadata.db")
         return query, db_path
-    
+
     def exec(self, prep_res):
         query, db_path = prep_res
-        
-        # Extract temporal information
-        filters = query_utils.build_metadata_filters(query)
-        
-        if not filters.get("start_date"):
-            logger.info("No temporal markers found, proceeding with regular search")
-            return []
-        
-        # Query database for files in date range
+        markers = query_utils.extract_temporal_markers(query)
+        start = markers.get("start") or datetime.fromtimestamp(0)
+        end = markers.get("end") or datetime.now()
         conn = metadata_db.init_db(db_path)
-        try:
-            from datetime import datetime
-            start = datetime.fromisoformat(filters["start_date"])
-            end = datetime.fromisoformat(filters.get("end_date", filters["start_date"]))
-            files = metadata_db.query_by_date_range(conn, start, end)
-            return files
-        finally:
-            conn.close()
-    
-    def post(self, shared, prep_res, exec_res):
-        shared["query"]["temporal_files"] = exec_res
+        files = metadata_db.query_by_date_range(conn, start, end)
+        conn.close()
+        return files
+
+    def post(self, shared: Dict[str, Any], prep_res, exec_res):
+        shared.setdefault("query", {})["temporal_files"] = exec_res
+        return "default"
+
+
+class AgentOrchestratorNode(Node):
+    """Simplified agent that could perform multi-step reasoning."""
+
+    def prep(self, shared: Dict[str, Any]):
+        query = shared.get("query", {}).get("query", "")
+        context = shared.get("query", {}).get("search_results", [])
+        return query, context
+
+    def exec(self, prep_res):
+        query, context = prep_res
+        # In this simplified example we just package the context for the LLM.
+        return {"query": query, "context": context}
+
+    def post(self, shared: Dict[str, Any], prep_res, exec_res):
+        shared.setdefault("query", {})["agent_results"] = exec_res
         return "default"
 
 
 class LLMProcessorNode(Node):
-    """Process search results through LLM to generate natural language response."""
-    
+    """Send gathered context to the language model."""
+
     def prep(self, shared: Dict[str, Any]):
+        cfg = shared.get("config", {})
+        provider = cfg.get("llm_provider", "ollama")
+        model = cfg.get("llm_model", "llama2")
+        results = shared.get("query", {}).get("search_results", [])
+        agent = shared.get("query", {}).get("agent_results")
         query = shared.get("query", {}).get("query", "")
-        search_results = shared.get("query", {}).get("search_results", [])
-        temporal_files = shared.get("query", {}).get("temporal_files", [])
-        config = shared.get("config", {})
-        
-        # Get chunk texts for search results
-        context_chunks = []
-        if search_results:
-            db_path = config.get("metadata_path", "metadata.db")
-            conn = metadata_db.init_db(db_path)
-            try:
-                for chunk_id, score in search_results:
-                    text = metadata_db.get_chunk_by_id(conn, chunk_id)
-                    if text:
-                        context_chunks.append(text)
-            finally:
-                conn.close()
-        
-        provider_info = llm_utils.route_to_provider("medium", config.get("llm_preference", "local"))
-        return query, context_chunks, provider_info
-    
+        return query, results, agent, provider, model
+
     def exec(self, prep_res):
-        query, context_chunks, provider_info = prep_res
-        
-        # Format context
-        context = llm_utils.format_context(context_chunks)
-        
-        # Create prompt
-        prompt = f"""Based on the following context from my business documents, please answer this question: {query}
+        query, results, agent, provider, model = prep_res
+        chunks = [r.get("text", "") for r in results]
+        if agent:
+            extra = agent.get("context", [])
+            if isinstance(extra, list):
+                chunks.extend(str(e) for e in extra)
+        prompt = f"{query}\n{llm_utils.format_context(chunks)}"
+        return llm_utils.call_llm(prompt, model=model, provider=provider)
 
-Context:
-{context}
-
-Please provide a helpful and accurate response based on the available information."""
-        
-        # Call LLM
-        response = llm_utils.call_llm(
-            prompt, 
-            provider_info["model"], 
-            provider_info["provider"]
-        )
-        
-        return response
-    
-    def post(self, shared, prep_res, exec_res):
-        shared["query"]["llm_response"] = exec_res
+    def post(self, shared: Dict[str, Any], prep_res, exec_res):
+        shared.setdefault("query", {})["llm_response"] = exec_res
         return "default"
 
 
 class OutputFormatterNode(Node):
-    """Format the final response for the requested output method."""
-    
+    """Final node that formats and stores the LLM output."""
+
     def prep(self, shared: Dict[str, Any]):
         response = shared.get("query", {}).get("llm_response", "")
-        config = shared.get("config", {})
-        output_format = config.get("output_format", "chat")
-        output_path = shared.get("query", {}).get("output_path", "")
-        return response, output_format, output_path
-    
+        cfg = shared.get("config", {})
+        fmt = cfg.get("output_format", "chat")
+        path = shared.get("query", {}).get("output_path", "output.txt")
+        return response, fmt, path
+
     def exec(self, prep_res):
-        response, output_format, output_path = prep_res
-        
-        if output_format == "file" and output_path:
-            # Write to file
-            Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-            Path(output_path).write_text(response)
-            return f"Response written to: {output_path}"
-        else:
-            # Return for chat/console output
-            return response
-    
-    def post(self, shared, prep_res, exec_res):
-        shared["query"]["final_output"] = exec_res
+        response, fmt, path = prep_res
+        if fmt == "file":
+            Path(path).write_text(response)
+            return path
+        return response
+
+    def post(self, shared: Dict[str, Any], prep_res, exec_res):
+        shared.setdefault("query", {})["result"] = exec_res
         return "default"
+
+
