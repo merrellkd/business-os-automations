@@ -27,6 +27,12 @@ def apply_gitignore(files: Iterable[Path], root_path: Path) -> List[Path]:
     List[Path]
         Only files that are not ignored by git.
     """
+    # Check if this is actually a git repository first
+    git_dir = root_path / ".git"
+    if not git_dir.exists():
+        # Not a git repo, return all files
+        return list(files)
+    
     filtered: List[Path] = []
     for file in files:
         try:
@@ -43,10 +49,9 @@ def apply_gitignore(files: Iterable[Path], root_path: Path) -> List[Path]:
             # Non-zero exit means the file is *not* ignored.
             filtered.append(file)
         except FileNotFoundError:
-            # Git is not installed or repo not initialised; include file anyway.
+            # Git is not installed; include file anyway.
             filtered.append(file)
     return filtered
-
 
 def scan_directory(root_path: str, extensions: List[str]) -> List[Path]:
     """Recursively scan ``root_path`` for files matching ``extensions``.

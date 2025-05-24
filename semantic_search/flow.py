@@ -116,3 +116,52 @@ def run_test_query(query_text: str, config: Dict[str, Any]) -> str:
     }
     
     return run_query(shared)
+
+
+def run_test_query_debug(query_text: str, config: Dict[str, Any]) -> str:
+    """Debug version that shows what happens at each step."""
+    
+    shared = {
+        "config": config,
+        "query": {
+            "query": query_text
+        }
+    }
+    
+    print(f"\n🔍 Debug: Starting query '{query_text}'")
+    print(f"📊 Initial shared state: {list(shared.keys())}")
+    
+    # Create and run the flow
+    query_type = shared.get("query", {}).get("query_type", "simple")
+    print(f"🎯 Query type: {query_type}")
+    
+    if query_type == "temporal":
+        flow = create_temporal_flow()
+    else:
+        flow = create_simple_search_flow()
+    
+    print(f"🔧 Created flow with {len(flow.nodes)} nodes")
+    
+    try:
+        flow.run(shared)
+        print(f"✅ Flow completed")
+    except Exception as e:
+        print(f"❌ Flow failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return f"Flow error: {e}"
+    
+    # Check what we have in shared state after flow
+    print(f"📊 Final shared state keys: {list(shared.keys())}")
+    if "query" in shared:
+        print(f"🔍 Query keys: {list(shared['query'].keys())}")
+        for key, value in shared["query"].items():
+            if isinstance(value, str):
+                print(f"   {key}: '{value[:100]}...' (len={len(value)})")
+            else:
+                print(f"   {key}: {type(value)} with {len(value) if hasattr(value, '__len__') else 'N/A'} items")
+    
+    result = shared.get("query", {}).get("final_output", "No response generated")
+    print(f"🎯 Final result: '{result}' (len={len(result)})")
+    return result
+

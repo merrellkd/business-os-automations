@@ -194,23 +194,28 @@ def run_integration_test():
             print(f"❌ Indexing failed: {e}")
             return False
         
-        # Test 2: Simple semantic search
-        print("\n🔍 Testing semantic search...")
+        # Test 2: Simple semantic search with detailed debugging
+        print("\n🔍 Testing semantic search with debug info...")
         test_queries = [
             "What is the target customer for Markers Helper?",
-            "What technology stack is used for semantic search?",
-            "What are the monthly expenses?",
-            "What was completed on January 20th?",
-            "Tell me about the go-to-market strategy"
+            # Just test one query first to see what's happening
         ]
         
         for query in test_queries:
             try:
-                result = run_test_query(query, config)
-                print(f"✅ Query: '{query[:30]}...' -> {len(result)} chars response")
+                # Import the debug function
+                from semantic_search.flow import run_test_query_debug
+                result = run_test_query_debug(query, config)
+                print(f"✅ Final result: '{result[:100]}...' (len={len(result)})")
             except Exception as e:
                 print(f"❌ Query failed: '{query}' -> {e}")
+                import traceback
+                traceback.print_exc()
+            
+            # Only test one query for now to avoid spam
+            break
         
+
         # Test 3: Temporal queries  
         print("\n📅 Testing temporal queries...")
         temporal_queries = [

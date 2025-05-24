@@ -184,18 +184,16 @@ class QueryRouterNode(Node):
     """Classify the user's query and route to the appropriate sub-flow."""
 
     def prep(self, shared: Dict[str, Any]):
-        # The query text is stored under ``shared['query']['query']``.
         return shared.get("query", {}).get("query", "")
 
     def exec(self, query: str) -> str:
-        # ``classify_query`` returns labels such as ``'simple'`` or ``'temporal'``.
         return query_utils.classify_query(query)
 
     def post(self, shared: Dict[str, Any], prep_res, exec_res: str) -> str:
-        # Persist the query type so later nodes can use it and return the
-        # action name to drive PocketFlow's branching behaviour.
         shared.setdefault("query", {})["query_type"] = exec_res
-        return exec_res
+        # Return "default" instead of the query type to avoid routing issues
+        # The query type is stored in shared state for other nodes to use
+        return "default"
 
 
 class SemanticSearchNode(Node):
@@ -207,27 +205,45 @@ class SemanticSearchNode(Node):
         index_path = cfg.get("index_path", "semantic_index.pkl")
         db_path = cfg.get("metadata_path", "metadata.db")
         model = cfg.get("embedding_model", "nomic-embed-text")
+        print(f"🔍 SemanticSearch prep: query='{q}', index_path='{index_path}'")
         return q, index_path, db_path, model
 
     def exec(self, prep_res):
         query, index_path, db_path, model = prep_res
+        print(f"🔍 SemanticSearch exec: Generating embedding for '{query[:30]}...'")
+        
         # Generate an embedding for the query text.
         vec = embedding_utils.generate_embeddings([query], model=model, use_fallback=True)[0]
+        print(f"🔍 SemanticSearch exec: Generated {len(vec)}-dim embedding")
+        
+        if not Path(index_path).exists():
+            print(f"❌ SemanticSearch exec: Index file not found at {index_path}")
+            return []
+        
         index = faiss_manager.load_index(index_path)
+        print(f"🔍 SemanticSearch exec: Loaded index with {len(index.get('ids', []))} vectors")
+        
         ids, scores = faiss_manager.search(index, vec, k=5)
+        print(f"🔍 SemanticSearch exec: Found {len(ids)} matches with scores {scores[:3]}...")
+        
         # Retrieve the original text for each matching chunk from SQLite.
         conn = metadata_db.init_db(db_path)
         results: List[Dict[str, Any]] = []
         for idx, score in zip(ids, scores):
-            text = metadata_db.get_chunk_by_id(conn, idx + 1)
+            # Note: FAISS returns 0-based IDs, but SQLite chunk IDs are 1-based
+            chunk_id = idx + 1
+            text = metadata_db.get_chunk_by_id(conn, chunk_id)
+            print(f"🔍 SemanticSearch exec: Chunk {chunk_id} -> {len(text) if text else 0} chars")
             results.append({"id": idx, "score": score, "text": text})
         conn.close()
+        
+        print(f"🔍 SemanticSearch exec: Returning {len(results)} results")
         return results
 
     def post(self, shared: Dict[str, Any], prep_res, exec_res):
         shared.setdefault("query", {})["search_results"] = exec_res
+        print(f"🔍 SemanticSearch post: Stored {len(exec_res)} search results")
         return "default"
-
 
 class TemporalMapperNode(Node):
     """Find files matching temporal constraints in the query."""
@@ -270,6 +286,7 @@ class AgentOrchestratorNode(Node):
         return "default"
 
 
+
 class LLMProcessorNode(Node):
     """Send gathered context to the language model."""
 
@@ -280,23 +297,44 @@ class LLMProcessorNode(Node):
         results = shared.get("query", {}).get("search_results", [])
         agent = shared.get("query", {}).get("agent_results")
         query = shared.get("query", {}).get("query", "")
+        
+        print(f"🤖 LLMProcessor prep: provider={provider}, model={model}")
+        print(f"🤖 LLMProcessor prep: {len(results)} search results")
+        
         return query, results, agent, provider, model
 
     def exec(self, prep_res):
         query, results, agent, provider, model = prep_res
-        chunks = [r.get("text", "") for r in results]
+        
+        # Extract text chunks
+        chunks = [r.get("text", "") for r in results if r.get("text")]
+        print(f"🤖 LLMProcessor exec: {len(chunks)} text chunks extracted")
+        
         if agent:
             extra = agent.get("context", [])
             if isinstance(extra, list):
                 chunks.extend(str(e) for e in extra)
-        prompt = f"{query}\n{llm_utils.format_context(chunks)}"
-        return llm_utils.call_llm(prompt, model=model, provider=provider)
+        
+        if not chunks:
+            print("⚠️ LLMProcessor exec: No chunks found for context!")
+            return "No relevant context found to answer the query."
+        
+        context = llm_utils.format_context(chunks)
+        prompt = f"Question: {query}\n\nContext:\n{context}\n\nAnswer:"
+        
+        print(f"🤖 LLMProcessor exec: Calling {provider} with prompt length {len(prompt)}")
+        print(f"🤖 LLMProcessor exec: Context preview: {context[:200]}...")
+        
+        response = llm_utils.call_llm(prompt, model=model, provider=provider)
+        print(f"🤖 LLMProcessor exec: Got response length {len(response)}")
+        print(f"🤖 LLMProcessor exec: Response preview: '{response[:100]}...'")
+        
+        return response
 
     def post(self, shared: Dict[str, Any], prep_res, exec_res):
         shared.setdefault("query", {})["llm_response"] = exec_res
+        print(f"🤖 LLMProcessor post: Stored response of length {len(exec_res)}")
         return "default"
-
-
 class OutputFormatterNode(Node):
     """Final node that formats and stores the LLM output."""
 
