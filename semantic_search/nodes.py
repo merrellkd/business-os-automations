@@ -12,10 +12,12 @@ import logging
 from pathlib import Path
 
 from pocketflow import Node, Flow
+from semantic_search.utils import llm_utils
 
 # Utility modules from this package
 from .utils import fs_utils, embedding_utils, query_utils
 from .storage import faiss_manager, metadata_db
+
 
 logger = logging.getLogger(__name__)
 
@@ -166,6 +168,167 @@ class UpdateMetadataDBNode(Node):
         shared["indexing"]["metadata_updated"] = exec_res
         return "default"
 
+# Add these nodes to your nodes.py file
 
-# Placeholder classes for query flow nodes will be added in other tracks.
+class QueryRouterNode(Node):
+    """Analyze incoming queries and route to appropriate processing flow."""
+    
+    def prep(self, shared: Dict[str, Any]):
+        query = shared.get("query", {}).get("query", "")
+        return query
+    
+    def exec(self, query: str):
+        query_type = query_utils.classify_query(query)
+        logger.info(f"Classified query as: {query_type}")
+        return query_type
+    
+    def post(self, shared, prep_res, exec_res):
+        shared.setdefault("query", {})["query_type"] = exec_res
+        return exec_res  # Route based on query type
 
+
+class SemanticSearchNode(Node):
+    """Perform vector similarity search against indexed documents."""
+    
+    def prep(self, shared: Dict[str, Any]):
+        query = shared.get("query", {}).get("query", "")
+        config = shared.get("config", {})
+        index_path = config.get("index_path", "semantic_index.pkl")
+        model = config.get("embedding_model", "nomic-embed-text")
+        k = config.get("search_k", 5)
+        return query, index_path, model, k
+    
+    def exec(self, prep_res):
+        query, index_path, model, k = prep_res
+        
+        # Generate query embedding
+        query_embedding = embedding_utils.generate_embeddings([query], model=model)[0]
+        
+        # Load and search index
+        if not Path(index_path).exists():
+            logger.warning(f"Index not found at {index_path}")
+            return []
+        
+        index = faiss_manager.load_index(index_path)
+        ids, scores = faiss_manager.search(index, query_embedding, k=k)
+        
+        return list(zip(ids, scores))
+    
+    def post(self, shared, prep_res, exec_res):
+        shared["query"]["search_results"] = exec_res
+        return "default"
+
+
+class TemporalMapperNode(Node):
+    """Handle time-based queries by filtering documents by date."""
+    
+    def prep(self, shared: Dict[str, Any]):
+        query = shared.get("query", {}).get("query", "")
+        config = shared.get("config", {})
+        db_path = config.get("metadata_path", "metadata.db")
+        return query, db_path
+    
+    def exec(self, prep_res):
+        query, db_path = prep_res
+        
+        # Extract temporal information
+        filters = query_utils.build_metadata_filters(query)
+        
+        if not filters.get("start_date"):
+            logger.info("No temporal markers found, proceeding with regular search")
+            return []
+        
+        # Query database for files in date range
+        conn = metadata_db.init_db(db_path)
+        try:
+            from datetime import datetime
+            start = datetime.fromisoformat(filters["start_date"])
+            end = datetime.fromisoformat(filters.get("end_date", filters["start_date"]))
+            files = metadata_db.query_by_date_range(conn, start, end)
+            return files
+        finally:
+            conn.close()
+    
+    def post(self, shared, prep_res, exec_res):
+        shared["query"]["temporal_files"] = exec_res
+        return "default"
+
+
+class LLMProcessorNode(Node):
+    """Process search results through LLM to generate natural language response."""
+    
+    def prep(self, shared: Dict[str, Any]):
+        query = shared.get("query", {}).get("query", "")
+        search_results = shared.get("query", {}).get("search_results", [])
+        temporal_files = shared.get("query", {}).get("temporal_files", [])
+        config = shared.get("config", {})
+        
+        # Get chunk texts for search results
+        context_chunks = []
+        if search_results:
+            db_path = config.get("metadata_path", "metadata.db")
+            conn = metadata_db.init_db(db_path)
+            try:
+                for chunk_id, score in search_results:
+                    text = metadata_db.get_chunk_by_id(conn, chunk_id)
+                    if text:
+                        context_chunks.append(text)
+            finally:
+                conn.close()
+        
+        provider_info = llm_utils.route_to_provider("medium", config.get("llm_preference", "local"))
+        return query, context_chunks, provider_info
+    
+    def exec(self, prep_res):
+        query, context_chunks, provider_info = prep_res
+        
+        # Format context
+        context = llm_utils.format_context(context_chunks)
+        
+        # Create prompt
+        prompt = f"""Based on the following context from my business documents, please answer this question: {query}
+
+Context:
+{context}
+
+Please provide a helpful and accurate response based on the available information."""
+        
+        # Call LLM
+        response = llm_utils.call_llm(
+            prompt, 
+            provider_info["model"], 
+            provider_info["provider"]
+        )
+        
+        return response
+    
+    def post(self, shared, prep_res, exec_res):
+        shared["query"]["llm_response"] = exec_res
+        return "default"
+
+
+class OutputFormatterNode(Node):
+    """Format the final response for the requested output method."""
+    
+    def prep(self, shared: Dict[str, Any]):
+        response = shared.get("query", {}).get("llm_response", "")
+        config = shared.get("config", {})
+        output_format = config.get("output_format", "chat")
+        output_path = shared.get("query", {}).get("output_path", "")
+        return response, output_format, output_path
+    
+    def exec(self, prep_res):
+        response, output_format, output_path = prep_res
+        
+        if output_format == "file" and output_path:
+            # Write to file
+            Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+            Path(output_path).write_text(response)
+            return f"Response written to: {output_path}"
+        else:
+            # Return for chat/console output
+            return response
+    
+    def post(self, shared, prep_res, exec_res):
+        shared["query"]["final_output"] = exec_res
+        return "default"
