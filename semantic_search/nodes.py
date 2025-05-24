@@ -196,6 +196,7 @@ class QueryRouterNode(Node):
         return "default"
 
 
+
 class SemanticSearchNode(Node):
     """Retrieve similar chunks from the vector store."""
 
@@ -244,6 +245,7 @@ class SemanticSearchNode(Node):
         shared.setdefault("query", {})["search_results"] = exec_res
         print(f"🔍 SemanticSearch post: Stored {len(exec_res)} search results")
         return "default"
+
 
 class TemporalMapperNode(Node):
     """Find files matching temporal constraints in the query."""
@@ -335,6 +337,7 @@ class LLMProcessorNode(Node):
         shared.setdefault("query", {})["llm_response"] = exec_res
         print(f"🤖 LLMProcessor post: Stored response of length {len(exec_res)}")
         return "default"
+    
 class OutputFormatterNode(Node):
     """Final node that formats and stores the LLM output."""
 
@@ -343,17 +346,29 @@ class OutputFormatterNode(Node):
         cfg = shared.get("config", {})
         fmt = cfg.get("output_format", "chat")
         path = shared.get("query", {}).get("output_path", "output.txt")
+        
+        # Debug logging
+        print(f"📝 OutputFormatter prep: Response length: {len(response)}")
+        print(f"📝 OutputFormatter prep: Response preview: {response[:100]}...")
+        
         return response, fmt, path
 
     def exec(self, prep_res):
         response, fmt, path = prep_res
         if fmt == "file":
+            Path(path).parent.mkdir(parents=True, exist_ok=True)
             Path(path).write_text(response)
-            return path
-        return response
+            result = f"Response written to: {path}"
+        else:
+            result = response
+        
+        print(f"📝 OutputFormatter exec: Final result length: {len(result)}")
+        print(f"📝 OutputFormatter exec: Final result preview: {result[:100]}...")
+        return result
 
     def post(self, shared: Dict[str, Any], prep_res, exec_res):
+        # Set both keys to be safe
         shared.setdefault("query", {})["result"] = exec_res
+        shared.setdefault("query", {})["final_output"] = exec_res
+        print(f"📝 OutputFormatter post: Stored final output of length {len(exec_res)}")
         return "default"
-
-

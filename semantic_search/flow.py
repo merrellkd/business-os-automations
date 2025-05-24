@@ -56,15 +56,16 @@ def run_incremental_index(shared: Dict[str, Any]) -> None:
 def create_simple_search_flow() -> Flow:
     """Return a PocketFlow that handles basic semantic search queries."""
     
-    router = nodes.QueryRouterNode()
+    # Skip the router for now since it's causing issues
+    # router = nodes.QueryRouterNode()
     search = nodes.SemanticSearchNode()
     llm = nodes.LLMProcessorNode()
     output = nodes.OutputFormatterNode()
     
     # Simple linear flow for basic queries
-    router >> search >> llm >> output
+    search >> llm >> output
     
-    return Flow(router)
+    return Flow(search)
 
 
 def create_temporal_flow() -> Flow:
@@ -101,7 +102,16 @@ def run_query(shared: Dict[str, Any]) -> str:
         flow = create_simple_search_flow()
     
     flow.run(shared)
-    return shared.get("query", {}).get("final_output", "No response generated")
+    
+    # Check multiple possible locations for the result
+    result = (
+        shared.get("query", {}).get("final_output") or
+        shared.get("query", {}).get("result") or  # This is what OutputFormatterNode sets
+        shared.get("query", {}).get("llm_response") or
+        "No response generated"
+    )
+    
+    return result
 
 
 # Helper function for testing
@@ -116,7 +126,6 @@ def run_test_query(query_text: str, config: Dict[str, Any]) -> str:
     }
     
     return run_query(shared)
-
 
 def run_test_query_debug(query_text: str, config: Dict[str, Any]) -> str:
     """Debug version that shows what happens at each step."""
@@ -140,7 +149,7 @@ def run_test_query_debug(query_text: str, config: Dict[str, Any]) -> str:
     else:
         flow = create_simple_search_flow()
     
-    print(f"🔧 Created flow with {len(flow.nodes)} nodes")
+    print(f"🔧 Created flow successfully")
     
     try:
         flow.run(shared)
@@ -164,4 +173,3 @@ def run_test_query_debug(query_text: str, config: Dict[str, Any]) -> str:
     result = shared.get("query", {}).get("final_output", "No response generated")
     print(f"🎯 Final result: '{result}' (len={len(result)})")
     return result
-
